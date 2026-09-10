@@ -218,18 +218,23 @@ def download_eims():
     return os.path.getsize(EIMS_TXT_PATH)
 
 
-def refresh_loss_operation(timeout=600):
+def refresh_loss_operation(timeout=1800):
     """Run SQLPathFinder (CLI) to refresh data/Lot_loss_operation.csv from MARS.
 
     Writes the current EIMS report as the VG2 input CSV (LotNumber col 2), then
     runs SPF which connects to MARS itself (its own auth), queries
     F_LOT_HISTORY_V3 for those lots, and writes Lot_loss_operation.csv.
     Returns (ok, message). Safe to skip if SPF isn't installed.
+
+    A normal run takes 2-4 minutes, but MARS can be much slower under load, so
+    the default timeout is generous - this only ever runs in the background.
     """
     if not os.path.exists(SPF_EXE) or not os.path.exists(SPF_VG2):
-        return False, "SQLPathFinder or VG2 not found — skipped."
+        return False, "SQLPathFinder or VG2 not found - skipped."
     if not os.path.exists(EIMS_TXT_PATH):
         return False, "No EIMS file to feed SPF."
+    if _spf_running():
+        return False, "SQLPathFinder is already running - skipped."
     # 1) Materialise the SPF input CSV (comma-delimited, LotNumber as col 2).
     try:
         df = pd.read_csv(EIMS_TXT_PATH, sep="\t", dtype=str, keep_default_na=False)
