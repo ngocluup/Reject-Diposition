@@ -35,22 +35,12 @@ if errorlevel 1 (
   )
 )
 
-REM --- 2. move main forward ---------------------------------------------------
-echo Merging dev into main...
-git fetch . dev:main
+REM --- 2. fast-forward main inside the prod worktree ------------------------
+echo Publishing dev to main and updating the prod worktree...
+git -C prod merge --ff-only dev
 if errorlevel 1 (
-  echo [ERROR] main could not be fast-forwarded. Resolve it manually:
-  echo         git checkout main ^&^& git merge dev
-  pause
-  exit /b 1
-)
-
-REM --- 3. update the worktree -------------------------------------------------
-echo Updating the prod worktree...
-git -C prod checkout main -q
-git -C prod reset --hard main -q
-if errorlevel 1 (
-  echo [ERROR] Could not update the prod worktree.
+  echo [ERROR] main could not be fast-forwarded onto dev.
+  echo         Resolve it manually:  git -C prod merge dev
   pause
   exit /b 1
 )
@@ -60,5 +50,5 @@ echo ============================================================
 echo   Deployed. Restart production to pick up the new code:
 echo       close the run_prod.bat window, then start it again.
 echo ============================================================
-git log --oneline -1 main
+git -C prod log --oneline -1
 pause
