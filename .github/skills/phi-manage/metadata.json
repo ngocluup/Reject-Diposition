@@ -1,0 +1,29 @@
+{
+  "name": "phi-manage",
+  "description": "Automates Intel TCI (tcitools.intel.com) PHI forecast report extraction, filtering, WIF generation, and email delivery for any product CommonName. Supports SDA Weekly/Monthly, MOR Spread, MOR Forecasts, and ENG reports with client-side operation/class/yield/burn-in filtering, DLCP post-filtering with fallback, time-column relabeling, and formatted xlsx output via Excel COM + Outlook COM email.",
+  "author": "YYANG71",
+  "category": "other",
+  "tags": [
+    "tci",
+    "phi",
+    "sda",
+    "mor",
+    "eng",
+    "forecast",
+    "yield",
+    "wif",
+    "burn-in",
+    "class-hot",
+    "ppv",
+    "tenx",
+    "powershell",
+    "test-engineering"
+  ],
+  "homepage": "https://github.com/intel-innersource/applications.manufacturing.intel.ai.forge-store/tree/main/skills/phi-manage",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/intel-innersource/applications.manufacturing.intel.ai.forge-store.git",
+    "directory": "skills/phi-manage"
+  },
+  "version": "1.0.0"
+}

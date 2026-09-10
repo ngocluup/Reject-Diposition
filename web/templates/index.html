@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reject Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_ver }}">
+</head>
+<body>
+<div class="wrap">
+  {% if is_dev %}
+  <div class="env-banner">🧪 DEVELOPMENT — this is a sandbox instance. The production app users rely on runs on port 8600.</div>
+  {% endif %}
+  <header class="hero">
+    <div class="hero-glow"></div>
+    <button id="themeToggle" class="theme-toggle" title="Toggle light / dark">
+      <span class="tt-icon">🌙</span>
+    </button>
+    <div class="hero-title"><span class="hero-logo">⚙️</span> Reject Management{% if is_dev %} <span class="env-tag">DEV</span>{% endif %}</div>
+    <div class="hero-sub">RUPS + EIMS reconciliation &middot; classify PPV/Class &middot; submit ATMf tickets</div>
+    <div class="hero-meta">
+      <span id="lastUpdate" class="chip-time">🕒 Last update: {{ last_update }}</span>
+      <button id="btnRefresh" class="btn btn-ghost">↻ Refresh EIMS</button>
+    </div>
+  </header>
+
+  <!-- View selector (always visible) -->
+  <div class="card view-bar">
+    <label>View</label>
+    <div class="seg" id="viewSeg">
+      <button data-view="default" class="active">PPV/Class review (Op 7000)</button>
+      <button data-view="op4000">Operation 4000 (all)</button>
+    </div>
+  </div>
+
+  <!-- Filters (other filters stay hidden here) -->
+  <details class="card" id="filterCard" {% if not has_eims %}open{% endif %}>
+    <summary>🔎 More filters</summary>
+    <div class="filter-body">
+      <div class="row">
+        <label>Products (Prodgroup3)</label>
+        <div id="productChips" class="chips"></div>
+      </div>
+      <div class="filter-grid" id="filterGrid"></div>
+      <button id="btnApply" class="btn btn-primary">Apply filters</button>
+    </div>
+  </details>
+
+  <!-- Summary -->
+  <section class="card">
+    <h2>📊 Summary</h2>
+    <div class="metrics" id="metrics"></div>
+    <h3>Lots by product <span class="muted">— click a row to jump to its detail below</span></h3>
+    <div class="table-scroll">
+      <table class="tbl" id="prodSummary">
+        <thead><tr>
+          <th>Product</th><th class="num">Lots</th><th class="num">Unit</th>
+          <th class="num">PPV (lots)</th><th class="num">Class (lots)</th>
+          <th class="num">Critical &gt;{{ critical_days }}d</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RUPS reconciliation -->
+  <section class="card" id="reconCard">
+    <h2>🔬 RUPS reconciliation <span class="muted">— auto-runs on refresh / filter change</span></h2>
+    <div class="row">
+      <div class="seg" id="scopeSeg">
+        <button data-scope="all" class="active">All inventory</button>
+        <button data-scope="critical">Critical Dispose only</button>
+      </div>
+      <span id="reconStatus" class="muted"></span>
+    </div>
+    <div id="reconMetrics" class="metrics"></div>
+    <div id="reconToolbar" class="recon-toolbar hidden">
+      <button class="btn" data-sel="all">✓ Select all lots</button>
+      <button class="btn" data-sel="mismatch">⚠ Select mismatches</button>
+      <button class="btn" data-sel="clear">Clear all</button>
+      <span id="selCount" class="pill">0 selected</span>
+    </div>
+    <div id="reconProducts"></div>
+  </section>
+
+  <!-- ATMf ticket -->
+  <section class="card" id="atmfCard">
+    <h2>🎫 Submit ATMf ticket <span class="muted">— signal {{ intms.signal }} (Reject Management - POR)</span></h2>
+    <div class="atmf-form">
+      <label>Customer<select id="atmfCustomer">{% for o in intms.customers %}<option {% if o==intms.defaults['Customer'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+      <label>Payer BU<select id="atmfPayer">{% for o in intms.payers %}<option {% if o==intms.defaults['Payer BU'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+      <label>Product Stage<select id="atmfStage">{% for o in intms.stages %}<option {% if o==intms.defaults['Product Stage'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+      <label>Factories<select id="atmfFactory">{% for o in intms.factories %}<option {% if o==intms.defaults['Factories'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+      <label>Test Area<select id="atmfTest"><option value="auto" selected>Auto (per lot PPV/Class)</option>{% for o in intms.test_areas %}<option>{{ o }}</option>{% endfor %}</select></label>
+      <label>Shipping/LYA/FA Only<select id="atmfShipping"><option>No</option><option>Yes</option></select></label>
+      <label>NFO shipment<select id="atmfNfo"><option>No</option><option>Yes</option></select></label>
+    </div>
+    <p class="muted">Tick lots in the reconciliation tables above, pick a Request per product, then submit.</p>
+    <div class="table-scroll">
+      <table class="tbl" id="atmfPreview">
+        <thead><tr>
+          <th>Request</th><th>Product</th><th>Product Name (ATMf)</th>
+          <th>Test Area</th><th>Lots</th><th class="num"># Lots</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <button id="btnSubmitAtmf" class="btn btn-primary" disabled>Submit ticket(s)</button>
+    <div id="atmfResults"></div>
+  </section>
+
+  <!-- Email report -->
+  <section class="card" id="emailCard">
+    <h2>✉️ Email report</h2>
+    <div class="row">
+      <input id="emailTo" placeholder="To: alias@intel.com; alias2@intel.com">
+      <input id="emailCc" placeholder="Cc (optional)">
+    </div>
+    <input id="emailSubject" placeholder="Subject" class="full">
+    <div class="row">
+      <button id="btnPreview" class="btn btn-ghost">Preview</button>
+      <button id="btnOpenOutlook" class="btn btn-primary">Open draft in Outlook</button>
+    </div>
+    <div id="emailPreview" class="email-preview"></div>
+  </section>
+</div>
+
+<div id="toast" class="toast"></div>
+<div id="overlay" class="overlay hidden"><div class="spinner"></div><div id="overlayMsg"></div></div>
+
+<script>
+window.INTMS = {{ intms | tojson }};
+window.CRITICAL_DAYS = {{ critical_days }};
+window.HAS_EIMS = {{ 'true' if has_eims else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ asset_ver }}"></script>
+</body>
+</html>

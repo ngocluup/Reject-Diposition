@@ -1,0 +1,22 @@
+{
+  "artifacts": [
+    {
+      "id": "phi-manage",
+      "name": "phi-manage",
+      "type": "skills",
+      "version": "1.0.0",
+      "installedScope": "workspace",
+      "installedPath": "c:\\Users\\ngocluup\\Desktop\\Projects\\Unit management\\.github\\skills\\phi-manage",
+      "installedDate": "2026-07-29T02:52:48.771Z"
+    },
+    {
+      "id": "tenx-pe-knowledge-mcp-server",
+      "name": "tenx-pe-knowledge-mcp-server",
+      "type": "mcp-servers",
+      "version": "1.0.0",
+      "installedScope": "workspace",
+      "installedPath": "C:\\Users\\ngocluup\\AppData\\Roaming\\Code\\User\\globalStorage\\forge-store\\mcp-servers\\tenx-pe-knowledge-mcp-server (use --force to reinstall)",
+      "installedDate": "2026-08-14T03:13:50.165Z"
+    }
+  ]
+}

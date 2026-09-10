@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+
+# Secrets — NEVER commit
+config.local.json
+*.token
+.env
+
+# Production worktree (deployed copy served to users)
+prod/
+
+# Generated outputs / temp
+output/
+*_email_body.html
+_send_outlook.ps1
+
+# Excel lock files
+~$*
+
+# Cached EIMS data (re-downloaded on demand)
+data/EIMS_Inventory_Report.txt
+data/EIMS_Inventory_Report*.xlsx
+data/EIMS_Inventory_Report*.csv
+data/EIMS_Inventory_filtered.csv
+
+# Factory data pulled from MARS — do not publish
+data/Lot_loss_operation.csv
+data/Lot_loss_operation*.bak
+data/samples/
+*_units.csv
+
+# Streamlit env skills (environment-specific symlinks)
+.agents/skills/developing-with-streamlit
+.claude/skills/developing-with-streamlit

@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy this file to config.local.json and fill in your own values. config.local.json is git-ignored and must never be committed.",
+  "RUPS_SITE": "VNAT",
+  "RUPS_TOKEN": "<your RUPS API token>",
+  "RUPS_WWID": "<your Intel WWID>"
+}

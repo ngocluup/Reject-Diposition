@@ -1,0 +1,6 @@
+# TCI weekly PHI tracking list - one job per line.
+# Format:  <Product>[ | <Report> [ | <Filter> [ | <Email> ]]]
+# Blank Report = all 4 reports bundled into one workbook.
+# Lines starting with # are ignored. Edit freely.
+Nova Lake S 28C
+Nova Lake U

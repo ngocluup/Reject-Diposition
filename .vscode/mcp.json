@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "aqua-mcp-server-gar": {
+      "type": "http",
+      "url": "https://pgsapp3301.gar.corp.intel.com:3001/mcp"
+    },
+    "tenx-pe-knowledge-mcp-server": {
+      "type": "http",
+      "url": "https://ppvbot.intel.com:25099/sse"
+    }
+  }
+}
