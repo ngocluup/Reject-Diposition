@@ -7,26 +7,65 @@ Last updated & verified: **2026-09-09** (full health check PASSED).
 
 ## 0. TL;DR — Running the app
 
-```bat
-run_web.bat
-```
-or
+| Instance | Command | Port | Scheduler | Who uses it |
+|---|---|---|---|---|
+| **Production** | `run_prod.bat` | 8600 | enabled (07:00 VN) | the team |
+| **Development** | `run_dev.bat` | 8601 | **disabled** | you only |
 
 ```powershell
+# Manual equivalent
 cd "C:\Users\ngocluup\Desktop\Projects\Unit management"
-& "C:\Users\ngocluup\AppData\Local\miniforge3\envs\ngocluup\python.exe" web\app.py 8600
+$env:RM_ENV="prod"; & "C:\Users\ngocluup\AppData\Local\miniforge3\envs\ngocluup\python.exe" prod\web\app.py
 ```
 
 | Item | Value |
 |---|---|
-| Local URL | http://localhost:8600 |
+| Local URL | http://localhost:8600 (prod) · http://localhost:8601 (dev) |
 | Share URLs (Intel net/VPN) | http://NGOCLUUP-ILIS09:8600 · http://ngocluup-iLIS09.ger.corp.intel.com:8600 · http://10.88.183.105:8600 |
 | Interpreter | `C:\Users\ngocluup\AppData\Local\miniforge3\envs\ngocluup\python.exe` (Python 3.14) |
 | Server | Flask + waitress, 8 threads, `host=0.0.0.0` |
-| Auto refresh | 07:00 Vietnam time (UTC+7) every day |
+| Auto refresh | 07:00 Vietnam time (UTC+7) every day — **production only** |
 
 > **Prerequisites:** the host must be joined to the Intel domain with VPN connected
 > (Kerberos SSO for EIMS/ATMf), and Outlook desktop must be running for the email feature.
+> Credentials must be present in `config.local.json` (copy `config.example.json`).
+
+---
+
+## 0b. Development / production separation
+
+Production is served from a **separate git worktree** pinned to `main`, so editing files in the
+working copy can never affect users who are online.
+
+```
+Unit management/        working copy  · branch "dev"  · port 8601 · DEV banner
+Unit management/prod/   git worktree  · branch "main" · port 8600 · what users open
+```
+
+Both instances share `data/` and `config.local.json` (via `RM_DATA_DIR` / `RM_CONFIG`) so the dev
+sandbox never has to re-download EIMS or re-run the MARS query.
+
+**Publishing a change:**
+1. Edit files in the working copy (branch `dev`) and test on <http://localhost:8601>.
+2. Run `deploy.bat` — it commits pending work, fast-forwards `main` inside the prod worktree.
+3. Restart `run_prod.bat`.
+
+**One-time setup on a fresh clone:** `setup_prod.bat` (creates the worktree).
+
+**Environment variables:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RM_ENV` | `prod` | `prod` or `dev`; `dev` disables the scheduler and shows the DEV banner |
+| `RM_PORT` | 8600 / 8601 | Listening port |
+| `RM_DATA_DIR` | `./data` | Shared data directory |
+| `RM_OUTPUT_DIR` | `./output` | Scratch directory |
+| `RM_CONFIG` | `./config.local.json` | Path to the secrets file |
+| `RUPS_SITE` / `RUPS_TOKEN` / `RUPS_WWID` | from `config.local.json` | RUPS API credentials |
+
+> Only the production instance runs the scheduler. Two schedulers would download EIMS and drive
+> SQLPathFinder simultaneously. `refresh_loss_operation()` also refuses to start when another
+> SQLPathFinder process is already running.
 
 ---
 
@@ -108,7 +147,8 @@ Orchestrator: `_daily_refresh_loop()` in [web/app.py](web/app.py) · endpoint `P
 - **Common failure:** `curl failed (exit 22)` → VPN dropped or the Kerberos ticket expired.
 
 ### Step A2 — Refresh loss-operation data from MARS
-- **Function:** `core.refresh_loss_operation(timeout=600)`
+- **Function:** `core.refresh_loss_operation(timeout=1800)`
+- Refuses to start if another `sqlpathfinder3.exe` is already running.
 - Three sub-steps:
   1. Read `EIMS_Inventory_Report.txt` (tab) → write `EIMS_Inventory_filtered.csv` (comma).
      *This is the lot list the VG2 consumes as input.*
@@ -346,6 +386,8 @@ Body: {"action_flow_json": {"id": "4", "rich_text": "<p>request</p><p>lot1</p><p
 | JS/CSS not updating | Browser cache | Already handled by `?v={{ asset_ver }}` (mtime) |
 | ORA-00942 with oracledb | Personal account has no grant | Use the SPF CLI (current approach) |
 | Filters pick up a "nan" value | `str(NaN) == "nan"` is truthy | Guard with `pd.notna(v) and str(v).strip().lower() != "nan"` |
+| `SPF timed out after 600s` | MARS was slower than the old timeout | ✅ fixed — default raised to 1800s |
+| Editing code broke the live app | Both were the same folder | ✅ fixed — prod runs from the `prod/` worktree |
 
 ---
 

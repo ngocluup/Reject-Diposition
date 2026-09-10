@@ -22,10 +22,18 @@ backup in [streamlit_backup/](streamlit_backup/).**
 **All project files, docs, code comments and UI text are written in English.**
 
 ## Run / share
-- **Web (primary):** `run_web.bat` — or
-  `C:\Users\ngocluup\AppData\Local\miniforge3\envs\ngocluup\python.exe web\app.py 8600`
-  → http://localhost:8600 (LAN: http://<host>:8600).
+- **Production (users):** `run_prod.bat` — served from the `prod/` git worktree (branch `main`) on
+  port 8600. LAN: `http://<host>:8600`.
+- **Development (you):** `run_dev.bat` — working copy (branch `dev`) on port 8601, scheduler
+  disabled, orange DEV banner. Edit freely; users are unaffected.
+- **Publish:** `deploy.bat` (fast-forwards `main` inside the worktree), then restart `run_prod.bat`.
+- **Fresh clone:** `setup_prod.bat` creates the worktree.
 - **Streamlit (backup):** `streamlit_backup\run_share.bat` (port 8501).
+
+## Secrets
+- RUPS credentials live in **`config.local.json`** (git-ignored) or env vars
+  `RUPS_SITE`/`RUPS_TOKEN`/`RUPS_WWID`. Copy `config.example.json` to start.
+- **Never hard-code tokens/WWIDs, and never commit factory data** (EIMS/MARS exports are ignored).
 
 ## Environment (critical — see [python-scripts instructions](.github/instructions/python-scripts.instructions.md))
 - No `python`/`python3` on PATH. Use the full **miniforge** interpreter path above for the app.
