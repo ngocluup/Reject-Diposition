@@ -26,9 +26,15 @@ backup in [streamlit_backup/](streamlit_backup/).**
   port 8600. LAN: `http://<host>:8600`.
 - **Development (you):** `run_dev.bat` — working copy (branch `dev`) on port 8601, scheduler
   disabled, orange DEV banner. Edit freely; users are unaffected.
-- **Publish:** `deploy.bat` (fast-forwards `main` inside the worktree), then restart `run_prod.bat`.
+- **Publish:** `deploy.bat` — commits dev, fast-forwards `main` inside the worktree, and pushes
+  both branches to GitHub. Then restart `run_prod.bat`.
 - **Fresh clone:** `setup_prod.bat` creates the worktree.
 - **Streamlit (backup):** `streamlit_backup\run_share.bat` (port 8501).
+
+## Repository
+- Remote: `https://github.com/ngocluup/Reject-Diposition` — **PRIVATE, keep it that way.**
+  The code contains Intel product codenames, internal hostnames/IPs, and employee names.
+- Branches: `main` (production) and `dev` (working copy). Never commit directly on `main`.
 
 ## Secrets
 - RUPS credentials live in **`config.local.json`** (git-ignored) or env vars

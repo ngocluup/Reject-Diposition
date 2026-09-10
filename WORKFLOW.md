@@ -47,10 +47,17 @@ sandbox never has to re-download EIMS or re-run the MARS query.
 
 **Publishing a change:**
 1. Edit files in the working copy (branch `dev`) and test on <http://localhost:8601>.
-2. Run `deploy.bat` — it commits pending work, fast-forwards `main` inside the prod worktree.
+2. Run `deploy.bat` — it commits pending work (prompting for a message), fast-forwards `main`
+   inside the prod worktree, and pushes both branches to GitHub.
 3. Restart `run_prod.bat`.
 
+> If the push fails (VPN down / offline) the deployment still succeeds locally; retry later with
+> `git push origin dev main`.
+
 **One-time setup on a fresh clone:** `setup_prod.bat` (creates the worktree).
+
+**Remote:** `https://github.com/ngocluup/Reject-Diposition` (**private** — it contains Intel
+product codenames, internal hostnames, and employee names, so it must never be made public).
 
 **Environment variables:**
 
