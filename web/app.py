@@ -136,8 +136,6 @@ def api_reconcile():
         import traceback
         traceback.print_exc()
         return jsonify({"ok": False, "error": "RUPS/reconcile error: %s" % e}), 500
-    # Cache the summary for email/ATMf product mapping.
-    app.config["LAST_SUMMARY"] = result.get("summary", [])
     return sjson(result)
 
 
@@ -169,31 +167,6 @@ def api_atmf_submit():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/api/email/preview", methods=["POST"])
-def api_email_preview():
-    summary = app.config.get("LAST_SUMMARY") or []
-    if not summary:
-        return jsonify({"ok": False, "error": "Run a reconciliation first."}), 400
-    subject, html = core.build_report(summary)
-    return jsonify({"ok": True, "subject": subject, "html": html})
-
-
-@app.route("/api/email/open", methods=["POST"])
-def api_email_open():
-    summary = app.config.get("LAST_SUMMARY") or []
-    if not summary:
-        return jsonify({"ok": False, "error": "Run a reconciliation first."}), 400
-    body = request.get_json(force=True) or {}
-    subject, html = core.build_report(summary)
-    subject = body.get("subject") or subject
-    try:
-        core.send_via_outlook(subject, html, to=body.get("to", ""),
-                              cc=body.get("cc", ""), display_only=True)
-        return jsonify({"ok": True})
-    except Exception as e:  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
 # ---------------------------------------------------------------- scheduler
 # Auto-refresh EIMS once a day at 07:00 Vietnam time (UTC+7, no DST).
 VN_TZ = _dt.timezone(_dt.timedelta(hours=7))
@@ -221,9 +194,7 @@ def _prewarm():
         selected = {k: v for k, v in core.DEFAULT_FILTERS.items() if k != "Prodgroup3"}
         filtered = core.apply_filters(df, products, selected)
         for scope in ("all", "critical"):
-            res = core.reconcile(filtered, scope=scope)
-            if scope == "all":
-                app.config["LAST_SUMMARY"] = res.get("summary", [])
+            core.reconcile(filtered, scope=scope)
         print("[prewarm] reconciliation cached for the day.")
     except Exception as e:  # noqa: BLE001
         print("[prewarm] failed: %s" % e)

@@ -40,9 +40,16 @@
   <details class="card" id="filterCard" {% if not has_eims %}open{% endif %}>
     <summary>🔎 More filters</summary>
     <div class="filter-body">
-      <div class="row">
-        <label>Products (Prodgroup3)</label>
-        <div id="productChips" class="chips"></div>
+      <div class="prod-picker">
+        <div class="pp-bar">
+          <label>Products (Prodgroup3)</label>
+          <input id="prodSearch" class="pp-search" type="search" placeholder="Type to filter… (e.g. ADL, 816B)" autocomplete="off">
+          <span id="prodCount" class="pill">0 / 0</span>
+          <button class="btn btn-sm btn-ghost" data-pp="all">All</button>
+          <button class="btn btn-sm btn-ghost" data-pp="none">None</button>
+          <button class="btn btn-sm btn-ghost" data-pp="reset" title="Back to the default product set">Reset</button>
+        </div>
+        <div id="productChips" class="chip-groups"></div>
       </div>
       <div class="filter-grid" id="filterGrid"></div>
       <button id="btnApply" class="btn btn-primary">Apply filters</button>
@@ -59,7 +66,7 @@
         <thead><tr>
           <th>Product</th><th class="num">Lots</th><th class="num">Unit</th>
           <th class="num">PPV (lots)</th><th class="num">Class (lots)</th>
-          <th class="num">Critical &gt;{{ critical_days }}d</th><th></th>
+          <th class="num">Critical &gt;{{ critical_days }}d</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -68,7 +75,7 @@
 
   <!-- RUPS reconciliation -->
   <section class="card" id="reconCard">
-    <h2>🔬 RUPS reconciliation <span class="muted">— auto-runs on refresh / filter change</span></h2>
+    <h2>🔬 RUPS reconciliation <span class="muted">— tick lots, then use the bar at the bottom to submit</span></h2>
     <div class="row">
       <div class="seg" id="scopeSeg">
         <button data-scope="all" class="active">All inventory</button>
@@ -79,57 +86,62 @@
     <div id="reconMetrics" class="metrics"></div>
     <div id="reconToolbar" class="recon-toolbar hidden">
       <button class="btn" data-sel="all">✓ Select all lots</button>
-      <button class="btn" data-sel="mismatch">⚠ Select mismatches</button>
       <button class="btn" data-sel="clear">Clear all</button>
       <span id="selCount" class="pill">0 selected</span>
     </div>
     <div id="reconProducts"></div>
   </section>
 
-  <!-- ATMf ticket -->
-  <section class="card" id="atmfCard">
-    <h2>🎫 Submit ATMf ticket <span class="muted">— signal {{ intms.signal }} (Reject Management - POR)</span></h2>
-    <div class="atmf-form">
-      <label>Customer<select id="atmfCustomer">{% for o in intms.customers %}<option {% if o==intms.defaults['Customer'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
-      <label>Payer BU<select id="atmfPayer">{% for o in intms.payers %}<option {% if o==intms.defaults['Payer BU'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
-      <label>Product Stage<select id="atmfStage">{% for o in intms.stages %}<option {% if o==intms.defaults['Product Stage'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
-      <label>Factories<select id="atmfFactory">{% for o in intms.factories %}<option {% if o==intms.defaults['Factories'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
-      <label>Test Area<select id="atmfTest"><option value="auto" selected>Auto (per lot PPV/Class)</option>{% for o in intms.test_areas %}<option>{{ o }}</option>{% endfor %}</select></label>
-      <label>Shipping/LYA/FA Only<select id="atmfShipping"><option>No</option><option>Yes</option></select></label>
-      <label>NFO shipment<select id="atmfNfo"><option>No</option><option>Yes</option></select></label>
+  <!-- ATMf ticket (opens as a drawer from the sticky action bar) -->
+  <div id="atmfBackdrop" class="drawer-backdrop hidden"></div>
+  <section class="drawer hidden" id="atmfCard" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>🎫 Submit ATMf ticket <span class="muted">— signal {{ intms.signal }} (Reject Management - POR)</span></h2>
+      <button id="atmfClose" class="drawer-close" title="Close">✕</button>
     </div>
-    <p class="muted">Tick lots in the reconciliation tables above, pick a Request per product, then submit.</p>
-    <div class="table-scroll">
-      <table class="tbl" id="atmfPreview">
-        <thead><tr>
-          <th>Request</th><th>Product</th><th>Product Name (ATMf)</th>
-          <th>Test Area</th><th>Lots</th><th class="num"># Lots</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
+    <div class="drawer-body">
+      <details class="atmf-opts">
+        <summary>Ticket defaults <span class="muted">— Customer, Payer BU, Stage, Factory, Test Area…</span></summary>
+        <div class="atmf-form">
+          <label>Customer<select id="atmfCustomer">{% for o in intms.customers %}<option {% if o==intms.defaults['Customer'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+          <label>Payer BU<select id="atmfPayer">{% for o in intms.payers %}<option {% if o==intms.defaults['Payer BU'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+          <label>Product Stage<select id="atmfStage">{% for o in intms.stages %}<option {% if o==intms.defaults['Product Stage'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+          <label>Factories<select id="atmfFactory">{% for o in intms.factories %}<option {% if o==intms.defaults['Factories'] %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+          <label>Test Area<select id="atmfTest"><option value="auto" selected>Auto (per lot PPV/Class)</option>{% for o in intms.test_areas %}<option>{{ o }}</option>{% endfor %}</select></label>
+          <label>Shipping/LYA/FA Only<select id="atmfShipping"><option>No</option><option>Yes</option></select></label>
+          <label>NFO shipment<select id="atmfNfo"><option>No</option><option>Yes</option></select></label>
+        </div>
+      </details>
+      <p class="muted">One ticket is created per Product + Test Area. Pick a Request for each row.</p>
+      <div class="table-scroll">
+        <table class="tbl" id="atmfPreview">
+          <thead><tr>
+            <th>Request</th><th>Product</th><th>Product Name (ATMf)</th>
+            <th>Test Area</th><th>Lots</th><th class="num"># Lots</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="atmfResults"></div>
     </div>
-    <button id="btnSubmitAtmf" class="btn btn-primary" disabled>Submit ticket(s)</button>
-    <div id="atmfResults"></div>
-  </section>
-
-  <!-- Email report -->
-  <section class="card" id="emailCard">
-    <h2>✉️ Email report</h2>
-    <div class="row">
-      <input id="emailTo" placeholder="To: alias@intel.com; alias2@intel.com">
-      <input id="emailCc" placeholder="Cc (optional)">
+    <div class="drawer-foot">
+      <span id="atmfFootInfo" class="muted"></span>
+      <button id="btnSubmitAtmf" class="btn btn-primary" disabled>Submit ticket(s)</button>
     </div>
-    <input id="emailSubject" placeholder="Subject" class="full">
-    <div class="row">
-      <button id="btnPreview" class="btn btn-ghost">Preview</button>
-      <button id="btnOpenOutlook" class="btn btn-primary">Open draft in Outlook</button>
-    </div>
-    <div id="emailPreview" class="email-preview"></div>
   </section>
 </div>
 
 <div id="toast" class="toast"></div>
 <div id="overlay" class="overlay hidden"><div class="spinner"></div><div id="overlayMsg"></div></div>
+
+<!-- Sticky action bar: appears as soon as lots are ticked -->
+<div id="actionBar" class="action-bar hidden">
+  <span class="ab-count"><b id="abCount">0</b> lot(s) selected</span>
+  <span class="ab-detail muted" id="abDetail"></span>
+  <span class="ab-spacer"></span>
+  <button id="abClear" class="btn btn-ghost btn-sm">Clear</button>
+  <button id="abSubmit" class="btn btn-primary">🎫 Review &amp; submit →</button>
+</div>
 
 <script>
 window.INTMS = {{ intms | tojson }};

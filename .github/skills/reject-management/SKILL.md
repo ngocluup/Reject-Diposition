@@ -29,7 +29,7 @@ Paste lots / visual IDs → query RUPS → view + download Excel.
   count; flag Match / N/A / Not found / MISMATCH; sort by Status then Last-used days.
 - **Classify** each lot PPV / Class / Eng_Assessment (SSPEC + LOSE_OPERATION → PI Dispose map).
 - **Display by product**: one card per product, PPV/Class/Eng metrics, one tab per group.
-- **Email report**: compose an Outlook draft (light-theme HTML) of the reconciliation.
+- **Export**: download any lot table as CSV/Excel or copy it to the clipboard.
 
 ### 3. Submit ATMf ticket (InTMS)
 - Tick lots directly in each table; every table has its own **Select all / Clear**.

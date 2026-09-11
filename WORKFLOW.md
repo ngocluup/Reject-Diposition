@@ -27,7 +27,7 @@ $env:RM_ENV="prod"; & "C:\Users\ngocluup\AppData\Local\miniforge3\envs\ngocluup\
 | Auto refresh | 07:00 Vietnam time (UTC+7) every day — **production only** |
 
 > **Prerequisites:** the host must be joined to the Intel domain with VPN connected
-> (Kerberos SSO for EIMS/ATMf), and Outlook desktop must be running for the email feature.
+> (Kerberos SSO for EIMS/ATMf).
 > Credentials must be present in `config.local.json` (copy `config.example.json`).
 
 ---
@@ -100,7 +100,6 @@ flowchart TD
 
     CORE --> UI["web/app.py -> UI :8600"]
     UI -->|"create ticket"| A
-    UI -->|"Outlook COM"| MAIL["HTML email"]
 ```
 
 **Core principles:**
@@ -114,7 +113,7 @@ flowchart TD
 
 | Path | Role |
 |---|---|
-| `web/core.py` | **All backend logic** (RUPS, EIMS, MARS/SPF, ATMf, email). Pure Python, no Flask. |
+| `web/core.py` | **All backend logic** (RUPS, EIMS, MARS/SPF, ATMf). Pure Python, no Flask. |
 | `web/app.py` | Flask JSON API + scheduler + waitress server. |
 | `web/templates/index.html` | Single-page UI. |
 | `web/static/app.js` | All frontend logic (API fetches, table rendering, multi-select). |
@@ -124,7 +123,7 @@ flowchart TD
 | `scripts/rups_data.py` | Standalone RUPS query script. |
 | `scripts/eims_lot_history.sql`, `build_lot_sql.py` | SQL rewrite of the VG2 (fallback, currently NOT usable — missing DB grant). |
 | `data/` | All cache/mapping files. |
-| `output/` | Scratch files (ATMf request bodies, email HTML, SPF logs). |
+| `output/` | Scratch files (ATMf request bodies, SPF logs). |
 | `streamlit_backup/` | Old Streamlit app (backup, port 8501). No longer used. |
 
 ---
@@ -262,6 +261,11 @@ otherwise        -> use cd3_s
 `products[] → groups[] (by PI: PPV → Class → Eng_Assessment) → lots[]`
 Sorting: MISMATCH first, then `last_used` descending.
 
+**Lot table columns (UI):** Lot · Product ID · EIMS · Last used (d) · Operation · PI Dispose.
+`Product ID` is the full EIMS `Product` string with its padding whitespace collapsed. The RUPS
+count has no column of its own — when it disagrees with EIMS it appears as a red `RUPS n` badge
+beside the EIMS quantity, and the whole row is tinted with a solid red bar on the left.
+
 **Verified results on 2026-09-09:**
 ```
 lots 1934 · rups records 64,896
@@ -320,18 +324,23 @@ Body: {"action_flow_json": {"id": "4", "rich_text": "<p>request</p><p>lot1</p><p
 
 ---
 
-## 7. WORKFLOW D — Email report
+## 7. WORKFLOW D — Exporting a lot table
 
-| Endpoint | Function | Result |
+Every PI-Dispose tab has an export bar underneath it. Exporting happens entirely in the
+browser, so there is no endpoint and no server round-trip.
+
+| Button | Format | Notes |
 |---|---|---|
-| `POST /api/email/preview` | `core.build_report(summary)` | returns `subject` + HTML (light theme, inline CSS for Outlook) |
-| `POST /api/email/open` | `core.send_via_outlook(..., display_only=True)` | **opens an Outlook compose window** (does not auto-send) |
+| ⬇ CSV | `.csv` with a UTF-8 BOM | Excel opens it with the right encoding |
+| ⬇ Excel | `.xls` (SpreadsheetML) | Styled header, no library needed |
+| ⧉ Copy | TSV to the clipboard | Paste straight into Excel or Teams |
 
-- Mechanism: writes the HTML to `output/_email_body.html`, generates `output/_send_outlook.ps1`,
-  and runs PowerShell against the Outlook COM object (`$mail.Display()`).
-- Subject: `EIMS <-> RUPS Lot Reconciliation - YYYY-MM-DD (N lots)`
-- Body: grouped per product, MISMATCH cells highlighted in red.
-- **Requirement:** Outlook desktop must be running on the server machine.
+- **Selection aware:** if any lots are ticked only those rows are exported, otherwise the whole
+  tab is. The hint on the left says which will happen.
+- File name: `<PRODUCT>_<PI>_<YYYYMMDD-HHMM>.csv`
+- Columns: Lot, Product, Product ID, EIMS_Qty, RUPS_Qty, Last_Used_Days, Operation, PI_Dispose, Status.
+
+> The Outlook email report was removed on 2026-09-10 — export or copy/paste instead.
 
 ---
 
@@ -347,8 +356,6 @@ Body: {"action_flow_json": {"id": "4", "rich_text": "<p>request</p><p>lot1</p><p
 | GET | `/api/atmf/products` | – | `{products[]}` (432) |
 | POST | `/api/atmf/guess` | `{prodgroups[]}` | `{map{}}` |
 | POST | `/api/atmf/submit` | `{tickets[]}` | `{results[]}` |
-| POST | `/api/email/preview` | – | `{subject, html}` |
-| POST | `/api/email/open` | `{to, cc, subject}` | `{ok}` |
 
 > Every response goes through `sjson()`, which converts NaN/Infinity to `null`
 > (otherwise the browser throws a **"bad json"** error).

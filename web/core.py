@@ -1,4 +1,4 @@
-"""Backend logic for the Reject Management web app (Flask).
+﻿"""Backend logic for the Reject Management web app (Flask).
 
 Pure Python (no Streamlit). Reuses the verified RUPS / EIMS / ATMf logic:
 - RUPS: POST rups.intel.com, one row per VID, QUANTITY is lot-level (never sum).
@@ -138,7 +138,7 @@ INTMS_PRODUCT_MAP = {
 _rups_cache = {}
 _rups_lock = threading.Lock()
 # Data is refreshed once a day (07:00 VN), so cache RUPS results for a full day.
-# Everything served afterwards reuses the cache — no repeated RUPS queries.
+# Everything served afterwards reuses the cache â€” no repeated RUPS queries.
 _RUPS_TTL = 24 * 3600
 
 
@@ -533,7 +533,7 @@ def _reconcile_impl(filtered, scope="all"):
                 "products": [], "status": 200}
 
     # EIMS qty + product per lot.
-    eims_qty, eims_prod = {}, {}
+    eims_qty, eims_prod, eims_pid = {}, {}, {}
     if "Quantity" in scope_df.columns:
         q = pd.to_numeric(scope_df["Quantity"], errors="coerce").fillna(0)
         eims_qty = q.groupby(scope_df[lotcol]).sum().astype(int).to_dict()
@@ -542,6 +542,13 @@ def _reconcile_impl(filtered, scope="all"):
             prods = sorted({str(v).strip() for v in grp["Prodgroup3"]
                             if str(v).strip() and str(v).strip().lower() != "nan"})
             eims_prod[lot] = ", ".join(prods)
+    # The full EIMS "Product" string (shown as Product ID in the UI). EIMS pads
+    # it with runs of spaces, so collapse them to keep the column readable.
+    if "Product" in scope_df.columns:
+        for lot, grp in scope_df.groupby(lotcol):
+            pids = sorted({" ".join(str(v).split()) for v in grp["Product"]
+                           if str(v).strip() and str(v).strip().lower() != "nan"})
+            eims_pid[lot] = ", ".join(pids)
 
     status, records = query_units(lots)
     if not records:
@@ -601,6 +608,7 @@ def _reconcile_impl(filtered, scope="all"):
         rows.append({
             "lot": lot,
             "product": eims_prod.get(lot, ""),
+            "product_id": eims_pid.get(lot, ""),
             "eims_qty": int(eq) if eq is not None else None,
             "rups_qty": rq,
             "last_used": last_used,
@@ -750,111 +758,3 @@ def submit_tickets(tickets):
         })
     return results
 
-
-# ======================================================================= email
-def build_report(summary_records):
-    """Light-theme HTML email from reconciliation summary records."""
-    summary = pd.DataFrame(summary_records)
-    total = len(summary)
-    n_match = int((summary["status"] == "Match").sum()) if total else 0
-    n_mis = int((summary["status"] == "MISMATCH").sum()) if total else 0
-    prods = sorted({p for p in summary.get("product", []) if str(p).strip()}) \
-        if total else []
-    subject = "EIMS <-> RUPS Lot Reconciliation - %s (%d lots)" % (
-        time.strftime("%Y-%m-%d"), total)
-
-    BG, CARD, BORDER = "#ffffff", "#f6f8fa", "#d0d7de"
-    TEXT, MUTED, HEAD_BG = "#1f2328", "#656d76", "#eaeef2"
-    RED = "background:#ffebe9;color:#cf222e;font-weight:700"
-    order = {"Match": 0, "N/A": 1, "Not found": 2, "MISMATCH": 3}
-
-    def _table(frame):
-        frame = frame.sort_values(
-            "status", key=lambda s: s.map(lambda v: order.get(v, 9)), kind="stable")
-        cols = [("lot", "Lot"), ("eims_qty", "EIMS_Qty"), ("rups_qty", "RUPS_Qty"),
-                ("last_used", "Last_Used_Days"), ("operation", "Operation"),
-                ("pi_dispose", "PI_Dispose")]
-        cols = [(k, h) for k, h in cols if k in frame.columns]
-        head = "".join(
-            "<th style='border:1px solid %s;padding:6px 10px;background:%s;color:%s;"
-            "text-align:left'>%s</th>" % (BORDER, HEAD_BG, TEXT, h) for _, h in cols)
-        body = ""
-        for _, r in frame.iterrows():
-            mis = str(r.get("status", "")) == "MISMATCH"
-            cells = ""
-            for k, _h in cols:
-                val = r[k]
-                val = "" if val is None or (isinstance(val, float) and pd.isna(val)) else val
-                extra = RED if (mis and k in ("eims_qty", "rups_qty")) else ("color:%s" % TEXT)
-                cells += "<td style='border:1px solid %s;padding:6px 10px;%s'>%s</td>" \
-                    % (BORDER, extra, val)
-            body += "<tr>%s</tr>" % cells
-        return ("<table style='border-collapse:collapse;font-family:Segoe UI,Arial;"
-                "font-size:12px;margin:6px 0;width:100%%'><thead><tr>%s</tr></thead>"
-                "<tbody>%s</tbody></table>" % (head, body))
-
-    parts = ["<div style='background:%s;padding:20px;font-family:Segoe UI,Arial;"
-             "font-size:14px;color:%s'>" % (BG, TEXT)]
-    parts.append(
-        "<div style='background:linear-gradient(120deg,#0969da,#0a66c2 55%%,#1a7f37);"
-        "padding:20px 24px;border-radius:16px;color:#fff;margin-bottom:14px'>"
-        "<div style='font-size:22px;font-weight:800'>RUPS + EIMS inventory reconciliation</div>"
-        "<div style='font-size:13px;color:#d6e4ff;margin-top:4px'>Report generated %s</div></div>"
-        % time.strftime("%Y-%m-%d %H:%M"))
-    parts.append("<p>Hi all,</p>")
-    parts.append("<div style='background:%s;border:1px solid %s;border-radius:10px;"
-                 "padding:12px 16px;margin:8px 0'><b>Summary</b><ul style='margin:6px 0'>"
-                 % (CARD, BORDER))
-    parts.append("<li>Products: <b>%s</b></li>" % (", ".join(prods) if prods else "-"))
-    parts.append("<li>Total lots: <b>%d</b></li>" % total)
-    parts.append("<li style='color:#1a7f37'>Matched: <b>%d</b></li>" % n_match)
-    parts.append("<li style='color:#cf222e'>Quantity mismatches: <b>%d</b></li>" % n_mis)
-    parts.append("</ul></div>")
-
-    if total and "product" in summary.columns:
-        for grp in sorted(summary["product"].unique(), key=lambda x: (x == "", x)):
-            sub = summary[summary["product"] == grp]
-            label = grp if str(grp).strip() else "(no product)"
-            g_mis = int((sub["status"] == "MISMATCH").sum())
-            accent = "#cf222e" if g_mis else "#0969da"
-            head = ("<span>&#128230; %s</span> <span style='color:%s;font-weight:400'>"
-                    "&mdash; %d lot(s)</span>" % (label, MUTED, len(sub)))
-            if g_mis:
-                head += " <span style='color:#cf222e'>&middot; %d mismatch</span>" % g_mis
-            parts.append(
-                "<div style='border:1px solid %s;border-left:4px solid %s;"
-                "border-radius:12px;padding:12px 16px;margin:14px 0;background:%s'>"
-                "<div style='font-size:16px;font-weight:800;margin-bottom:4px'>%s</div>%s</div>"
-                % (BORDER, accent, CARD, head, _table(sub)))
-    parts.append("<p style='color:%s'>Thanks,</p></div>" % MUTED)
-    return subject, "".join(parts)
-
-
-def send_via_outlook(subject, html_body, to="", cc="", attachment_path=None,
-                     display_only=True):
-    ps = r"""
-$ol = New-Object -ComObject Outlook.Application
-$mail = $ol.CreateItem(0)
-$mail.Subject = $env:MAIL_SUBJECT
-$mail.To = $env:MAIL_TO
-$mail.CC = $env:MAIL_CC
-$mail.HTMLBody = [System.IO.File]::ReadAllText($env:MAIL_BODY_FILE)
-if ($env:MAIL_ATTACH -and (Test-Path $env:MAIL_ATTACH)) { $mail.Attachments.Add($env:MAIL_ATTACH) | Out-Null }
-"""
-    ps += "$mail.Display()\n" if display_only else "$mail.Send()\n"
-    body_file = os.path.join(OUTPUT_DIR, "_email_body.html")
-    with open(body_file, "w", encoding="utf-8") as f:
-        f.write(html_body)
-    ps_file = os.path.join(OUTPUT_DIR, "_send_outlook.ps1")
-    with open(ps_file, "w", encoding="utf-8") as f:
-        f.write(ps)
-    env = dict(os.environ)
-    env.update({
-        "MAIL_SUBJECT": subject, "MAIL_TO": to, "MAIL_CC": cc,
-        "MAIL_BODY_FILE": body_file, "MAIL_ATTACH": attachment_path or "",
-    })
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_file],
-        capture_output=True, text=True, env=env)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "Outlook COM failed")

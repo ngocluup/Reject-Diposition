@@ -19,7 +19,7 @@ Intel network / VPN.
   loss operation; PI Dispose mapped from an Excel lookup.
 - **MARS loss-operation enrichment** — driven automatically through the SQLPathFinder CLI.
 - **ATMf ticket submission** — creates signal-221 tickets and fills the required action-flow step.
-- **HTML email reports** — opens a pre-filled Outlook draft.
+- **Export** — download any lot table as CSV/Excel, or copy it to the clipboard.
 - **Fully automated daily refresh** at 07:00 Vietnam time, with 24-hour caching and pre-warming.
 
 ---
@@ -33,7 +33,6 @@ Intel network / VPN.
   conda install -n ngocluup -y -c conda-forge pandas requests openpyxl flask waitress
   ```
 - SQLPathFinder 3 installed (for the MARS loss-operation query).
-- Outlook desktop running (for the email feature).
 
 ---
 
