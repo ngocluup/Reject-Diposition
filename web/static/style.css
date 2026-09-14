@@ -192,8 +192,63 @@ input.full { width: 100%; margin: 8px 0; }
 .chip.on { background: var(--accent-grad); border-color: transparent; color: #fff; }
 .chip.hide { display: none; }
 
-/* ---------- Product picker (grouped chips + search) ---------- */
-.prod-picker { border: 1px solid var(--border); border-radius: var(--radius-sm);
+/* ---------- Lot search ---------- */
+.search-body { margin-top: 12px; }
+.search-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lot-query { flex: 1; min-width: 280px; font-family: var(--mono); font-size: 12.5px; }
+.search-hint { margin: 8px 0 4px; font-size: 12px; }
+#searchResults.hidden { display: none; }
+#searchProducts .prod-detail { margin-bottom: 12px; }
+.sugg-box { display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 10px; font-size: 12.5px;
+  border: 1px solid var(--orange); border-radius: var(--radius-sm);
+  background: var(--orange-bg); }
+.sugg-box .chip { font-size: 11.5px; }
+
+/* ---------- Excel-like table tools ---------- */
+.tt-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0 6px; }
+.tt-search { flex: 0 1 260px; min-width: 150px; font-size: 12px; padding: 5px 10px; }
+.tt-count { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+.tt-count.filtered { color: var(--accent); font-weight: 700; }
+.tt-reset { margin-left: auto; }
+.tt-reset.hidden { display: none; }
+
+th.th-tool { white-space: nowrap; }
+th.th-tool .th-label { cursor: pointer; user-select: none; }
+th.th-tool .th-label:hover { color: var(--accent); text-decoration: underline; }
+th.th-tool .th-sort { font-size: 9px; margin-left: 4px; color: var(--accent); }
+.th-filter { background: none; border: none; cursor: pointer; padding: 0 2px; margin-left: 3px;
+  color: var(--muted); font-size: 11px; line-height: 1; opacity: .5; transition: .15s var(--ease); }
+th.th-tool:hover .th-filter { opacity: 1; }
+.th-filter:hover { color: var(--accent); }
+.th-filter.on { opacity: 1; color: var(--accent); }
+.th-filter.on::after { content: "\25cf"; font-size: 7px; vertical-align: super; }
+
+.col-menu { position: absolute; z-index: 90; width: 250px; padding: 10px;
+  background: var(--card-solid); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: 0 14px 40px rgba(0,0,0,.4);
+  animation: rise .16s var(--ease) both; }
+.cm-sort { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.cm-sort button { background: none; border: none; color: var(--text); cursor: pointer;
+  text-align: left; font-size: 12px; padding: 5px 7px; border-radius: 6px; }
+.cm-sort button:hover { background: var(--row-hover); color: var(--accent); }
+.cm-search { width: 100%; font-size: 12px; padding: 5px 9px; margin-bottom: 7px; }
+.cm-all { display: flex; align-items: center; gap: 7px; font-size: 12px; padding: 3px 4px;
+  border-bottom: 1px solid var(--border); margin-bottom: 5px; cursor: pointer;
+  text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; }
+.cm-list { max-height: 210px; overflow: auto; }
+.cm-list label { display: flex; align-items: center; gap: 7px; font-size: 12px;
+  padding: 3px 4px; border-radius: 5px; cursor: pointer; text-transform: none;
+  letter-spacing: 0; color: var(--text); font-weight: 400; margin: 0; }
+.cm-list label:hover { background: var(--row-hover); }
+.cm-list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11.5px; }
+.cm-list label.hide { display: none; }
+.cm-foot { display: flex; gap: 6px; justify-content: flex-end; margin-top: 9px;
+  padding-top: 8px; border-top: 1px solid var(--border); }
+
+/* ---------- Product picker (grouped chips + search) ---------- */.prod-picker { border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 12px 14px; background: var(--card-solid); }
 .pp-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .pp-bar > label { margin: 0; white-space: nowrap; }
@@ -357,8 +412,40 @@ td.conflict { color: var(--red); font-weight: 700; }
                       to   { transform: translate(-50%, 0);     opacity: 1; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* ---------- Already-submitted lots ---------- */
+/* A lot that already has a ticket is dimmed with a green left bar, so it reads
+   as "done" without competing with the red mismatch highlight. */
+tr.row-done > td { opacity: .72; }
+tr.row-done > td:first-child { box-shadow: inset 4px 0 0 var(--green); }
+tr.row-done.row-mis > td:first-child {
+  box-shadow: inset 4px 0 0 var(--green), inset 8px 0 0 var(--red); }
+.tkt-cell { white-space: nowrap; }
+a.tkt { display: inline-block; padding: 1px 8px; border-radius: 999px;
+  background: var(--green-bg); color: var(--green); font-size: 11px;
+  font-weight: 700; font-family: var(--mono); text-decoration: none; }
+a.tkt:hover { background: var(--green); color: #fff; }
+.lot-done { color: var(--green); font-weight: 700; text-decoration: underline dotted; }
+
+.dupe-box { padding: 11px 14px; margin-bottom: 12px; font-size: 12.5px;
+  border: 1px solid var(--orange); border-radius: var(--radius-sm);
+  background: var(--orange-bg); }
+.dupe-box.hidden { display: none; }
+.dupe-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.dupe-list a { font-family: var(--mono); font-size: 11.5px; padding: 2px 9px;
+  border-radius: 999px; background: var(--card-solid); border: 1px solid var(--border);
+  color: var(--text); text-decoration: none; }
+.dupe-list a:hover { border-color: var(--accent); color: var(--accent); }
+.dupe-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
 /* ---------- ATMf ---------- */
 .atmf-form { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 12px; }
+
+/* Type-to-search product name box */
+.atmf-name { width: 100%; min-width: 190px; font-family: var(--mono); font-size: 12px;
+  padding: 5px 9px; }
+.atmf-name.empty { border-color: var(--orange); background: var(--orange-bg); }
+.atmf-name.bad { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+.atmf-name:focus { border-color: var(--accent); background: var(--card-solid); }
 #atmfResults .res { padding: 10px 14px; border-radius: var(--radius-sm); margin: 7px 0; animation: rise .3s var(--ease) both; }
 .res.ok { background: var(--green-bg); border: 1px solid var(--green); }
 .res.err { background: var(--red-bg); border: 1px solid var(--red); }
@@ -374,18 +461,28 @@ td.conflict { color: var(--red); font-weight: 700; }
 .lot-tbl .hdr-check:indeterminate { opacity: .75; }
 .lot-tbl thead th:first-child { cursor: pointer; }
 
-/* ---------- Toast + overlay ---------- */
+/* ---------- Toast + overlay ----------
+   Layer order: action bar 60 < drawer 70/71 < busy overlay 200 < toast 300. */
 .toast { position: fixed; bottom: 22px; right: 22px; background: var(--card-solid);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 13px 17px;
   opacity: 0; transform: translateY(12px); transition: .28s var(--ease); pointer-events: none;
-  max-width: 400px; box-shadow: var(--shadow); z-index: 60; color: var(--text); }
+  max-width: 400px; box-shadow: var(--shadow); z-index: 300; color: var(--text); }
 .toast.show { opacity: 1; transform: translateY(0); }
+/* Must sit above the ATMf drawer (z-index 71), otherwise the Submit button
+   stays clickable while a request is in flight and creates duplicate tickets. */
 .overlay { position: fixed; inset: 0; background: rgba(4,8,16,.6); backdrop-filter: blur(3px);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 50; color: #fff; }
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 200; color: #fff; }
 .overlay.hidden { display: none; }
 .spinner { width: 46px; height: 46px; border: 4px solid rgba(255,255,255,.2);
   border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* In-button busy state, so the lock is obvious even without the overlay. */
+.btn.is-busy { position: relative; padding-left: 32px; cursor: progress; }
+.btn.is-busy::before { content: ""; position: absolute; left: 12px; top: 50%;
+  width: 13px; height: 13px; margin-top: -7px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  animation: spin .8s linear infinite; }
 
 /* ---------- Scrollbars ---------- */
 *::-webkit-scrollbar { width: 10px; height: 10px; }

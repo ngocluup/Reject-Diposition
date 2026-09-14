@@ -19,6 +19,10 @@ Intel network / VPN.
   loss operation; PI Dispose mapped from an Excel lookup.
 - **MARS loss-operation enrichment** — driven automatically through the SQLPathFinder CLI.
 - **ATMf ticket submission** — creates signal-221 tickets and fills the required action-flow step.
+  Remembers the product mapping you picked, flags lots that already have a ticket, and blocks
+  duplicate submissions.
+- **Search by lot** — look up any lot regardless of the current filters, reusing data already on screen.
+- **Excel-like tables** — quick search, sortable headers and per-column filter dropdowns everywhere.
 - **Export** — download any lot table as CSV/Excel, or copy it to the clipboard.
 - **Fully automated daily refresh** at 07:00 Vietnam time, with 24-hour caching and pre-warming.
 

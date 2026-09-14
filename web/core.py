@@ -134,11 +134,97 @@ INTMS_PRODUCT_MAP = {
 }
 
 
+# ======================================================================= memory
+# Everything the app learns from real submissions, shared by the whole team:
+#   product_map : Prodgroup3 -> the ATMf Product Name actually used
+#   submitted   : lot -> the ticket it went out on
+# One small JSON file next to the data, rewritten atomically.
+MEMORY_PATH = os.path.join(DATA_DIR, "atmf_memory.json")
+_memory = None
+_memory_lock = threading.Lock()
+
+
+def _blank_memory():
+    return {"product_map": {}, "submitted": {}}
+
+
+def load_memory():
+    global _memory
+    with _memory_lock:
+        if _memory is None:
+            _memory = _blank_memory()
+            if os.path.exists(MEMORY_PATH):
+                try:
+                    with open(MEMORY_PATH, "r", encoding="utf-8-sig") as f:
+                        data = json.load(f)
+                    if isinstance(data, dict):
+                        _memory["product_map"] = dict(data.get("product_map") or {})
+                        _memory["submitted"] = dict(data.get("submitted") or {})
+                except (ValueError, OSError):
+                    pass
+        return _memory
+
+
+def _save_memory_locked():
+    """Write via a temp file so a crash can never leave a half-written JSON."""
+    tmp = MEMORY_PATH + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_memory, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, MEMORY_PATH)
+    except OSError:
+        pass
+
+
+def remember_product_choice(prodgroup3, atmf_name):
+    """Learn the ATMf Product Name a user picked for a Prodgroup3."""
+    code = str(prodgroup3 or "").strip().upper()
+    name = str(atmf_name or "").strip()
+    if not code or not name:
+        return
+    load_memory()
+    with _memory_lock:
+        if _memory["product_map"].get(code) == name:
+            return
+        _memory["product_map"][code] = name
+        _save_memory_locked()
+
+
+def remember_submission(lots, info):
+    """Record that these lots went out on a ticket."""
+    load_memory()
+    with _memory_lock:
+        for lot in lots:
+            _memory["submitted"][str(lot)] = info
+        _save_memory_locked()
+
+
+def submitted_map():
+    return dict(load_memory()["submitted"])
+
+
+def learned_product_map():
+    return dict(load_memory()["product_map"])
+
+
+def forget_submissions(lots):
+    """Drop the submitted marker for these lots (e.g. a ticket was cancelled)."""
+    load_memory()
+    removed = 0
+    with _memory_lock:
+        for lot in lots:
+            if _memory["submitted"].pop(str(lot), None) is not None:
+                removed += 1
+        if removed:
+            _save_memory_locked()
+    return removed
+
+
 # ======================================================================= RUPS
 _rups_cache = {}
 _rups_lock = threading.Lock()
 # Data is refreshed once a day (07:00 VN), so cache RUPS results for a full day.
-# Everything served afterwards reuses the cache â€” no repeated RUPS queries.
+# Everything served afterwards reuses the cache - no repeated RUPS queries.
 _RUPS_TTL = 24 * 3600
 
 
@@ -182,10 +268,35 @@ def clear_rups_cache():
 _recon_cache = {}
 _recon_lock = threading.Lock()
 
+# Flat lot -> reconciled row index, filled by every reconciliation that runs.
+# "Search by lot" reads from here first so it reuses the numbers already on
+# screen instead of issuing a second RUPS query for the same lots.
+_lot_rows = {}
+
+
+def remember_lot_rows(rows):
+    with _recon_lock:
+        for r in rows:
+            _lot_rows[r["lot"]] = r
+
+
+def cached_lot_rows(lots):
+    """Return (found_rows, missing_lots) for the requested lots."""
+    found, missing = [], []
+    with _recon_lock:
+        for lot in lots:
+            row = _lot_rows.get(lot)
+            if row is None:
+                missing.append(lot)
+            else:
+                found.append(dict(row))
+    return found, missing
+
 
 def clear_recon_cache():
     with _recon_lock:
         _recon_cache.clear()
+        _lot_rows.clear()
 
 
 def records_to_df(records):
@@ -384,6 +495,12 @@ def strip_via(value):
     return ", ".join(out)
 
 
+def cd3_map_for(lot):
+    """MARS CREATE_DATA3 (the loss operation) for one lot, or ""."""
+    _, cd3 = load_inqty_map()
+    return cd3.get(lot, "")
+
+
 def map_pi_dispose(lose_value, lose_map):
     if not lose_value or not lose_map:
         if lose_value and "7226" in str(lose_value):
@@ -409,6 +526,12 @@ def guess_atmf_product(prodgroup3, products, rups_product=""):
     if not products:
         return ""
     code = str(prodgroup3 or "").strip().upper()
+
+    # What a human actually picked last time always wins over any guessing.
+    learned = learned_product_map().get(code)
+    if learned and learned in products:
+        return learned
+
     if code in INTMS_PRODUCT_MAP and INTMS_PRODUCT_MAP[code] in products:
         return INTMS_PRODUCT_MAP[code]
 
@@ -552,9 +675,24 @@ def _reconcile_impl(filtered, scope="all"):
 
     status, records = query_units(lots)
     if not records:
+        # Still index these lots (as EIMS-only rows) so "search by lot" does not
+        # re-run the same empty RUPS query every single time.
+        blank = [{
+            "lot": lot,
+            "product": eims_prod.get(lot, ""),
+            "product_id": eims_pid.get(lot, ""),
+            "eims_qty": int(eims_qty[lot]) if lot in eims_qty else None,
+            "rups_qty": 0,
+            "last_used": None,
+            "operation": strip_via(cd3_map_for(lot)),
+            "op_conflict": False,
+            "pi_dispose": map_pi_dispose(strip_via(cd3_map_for(lot)), load_lose_map()),
+            "status": "Not found",
+        } for lot in lots]
+        remember_lot_rows(blank)
         return {"ok": True, "lots": len(lots), "records": 0,
-                "status": status, "metrics": {}, "products": [],
-                "summary": [], "not_found": lots,
+                "status": status, "metrics": {}, "products": group_by_product(pd.DataFrame(blank)),
+                "summary": blank, "not_found": lots,
                 "message": "No RUPS records for the %d searched lot(s)." % len(lots)}
 
     df = records_to_df(records)
@@ -623,13 +761,42 @@ def _reconcile_impl(filtered, scope="all"):
     sspec = df["SSPEC"].astype(str).str.strip() if "SSPEC" in df.columns \
         else pd.Series("", index=df.index)
 
-    # Group by product -> PI group.
+    # Feed the lot index so "search by lot" can reuse these numbers.
+    remember_lot_rows(rows)
+
+    products = group_by_product(summary)
+
+    return {
+        "ok": True,
+        "lots": len(lots),
+        "records": len(df),
+        "status": status,
+        "not_found": not_found,
+        "metrics": {
+            "ppv_units": int((sspec != "").sum()),
+            "class_units": int((sspec == "").sum()),
+            "not_found": len(not_found),
+            "mismatch": n_mis,
+        },
+        "products": products,
+        "summary": summary.to_dict("records"),
+    }
+
+
+def group_by_product(summary):
+    """Shape a summary frame into products[] -> groups[] (by PI) -> lots[].
+
+    Shared by the reconciliation view and the lot search so both render with
+    exactly the same component and selection behaviour.
+    """
+    if summary is None or not len(summary):
+        return []
     status_order = {"Match": 0, "N/A": 1, "Not found": 2, "MISMATCH": 3}
+    pi_order = {"PPV": 0, "Class": 1, "Eng_Assessment": 2}
     products = []
     for prod in sorted(summary["product"].unique(), key=lambda x: (x == "", x)):
         sub = summary[summary["product"] == prod]
         groups = []
-        pi_order = {"PPV": 0, "Class": 1, "Eng_Assessment": 2}
         for pi in sorted(sub["pi_dispose"].unique(),
                          key=lambda x: (pi_order.get(x, 8), x == "", x)):
             psub = sub[sub["pi_dispose"] == pi].copy()
@@ -652,24 +819,165 @@ def _reconcile_impl(filtered, scope="all"):
             "mismatch": int((sub["status"] == "MISMATCH").sum()),
             "groups": groups,
         })
+    return products
+
+
+# ======================================================================= lot search
+# Free-form lookup for any lot, independent of the current filters. The result
+# is shaped exactly like the reconciliation (products -> PI groups -> lots) so
+# the same table component renders it and lots stay selectable for ATMf.
+
+# A single search is interactive, so keep it small and fast.
+MAX_SEARCH_LOTS = 200
+MAX_SUGGESTIONS = 8
+
+
+def parse_lot_input(text):
+    """Split a free-form lot list into clean tokens.
+
+    Accepts anything a user is likely to paste: commas, semicolons, tabs,
+    newlines or plain spaces (so an Excel column pastes straight in).
+    Order is preserved and duplicates are dropped.
+    """
+    if not text:
+        return []
+    out, seen = [], set()
+    for raw in str(text).replace(",", " ").replace(";", " ").split():
+        tok = raw.strip().strip("\"'")
+        if not tok:
+            continue
+        key = tok.upper()
+        if key not in seen:
+            seen.add(key)
+            out.append(tok)
+    return out
+
+
+def _eims_lot_index():
+    """Map UPPER(lot) -> real lot string, for case-insensitive lookups."""
+    df = load_eims_df()
+    if df is None or EIMS_LOT_COLUMN not in df.columns:
+        return {}
+    lots = df[EIMS_LOT_COLUMN].astype(str).str.strip()
+    return {v.upper(): v for v in lots.unique() if v}
+
+
+def resolve_lots(tokens):
+    """Turn user tokens into real lot numbers.
+
+    An exact (case-insensitive) hit wins. Otherwise the token is treated as a
+    prefix/substring so "ADLN" expands to every matching EIMS lot. Tokens that
+    match nothing are kept anyway (the lot may have left inventory already).
+    """
+    index = _eims_lot_index()
+    resolved, unknown, expanded = [], [], {}
+    seen = set()
+
+    def _add(lot):
+        if lot and lot not in seen:
+            seen.add(lot)
+            resolved.append(lot)
+
+    for tok in tokens:
+        up = tok.upper()
+        if up in index:
+            _add(index[up])
+            continue
+        hits = [v for k, v in index.items() if k.startswith(up)]
+        if not hits:
+            hits = [v for k, v in index.items() if up in k]
+        if hits:
+            hits = sorted(hits)[:MAX_SEARCH_LOTS]
+            expanded[tok] = len(hits)
+            for h in hits:
+                _add(h)
+        else:
+            _add(tok)
+            unknown.append(tok)
+    return resolved[:MAX_SEARCH_LOTS], unknown, expanded
+
+
+def suggest_lots(token, limit=MAX_SUGGESTIONS):
+    """Close EIMS lot numbers for a token that matched nothing."""
+    index = _eims_lot_index()
+    if not index:
+        return []
+    near = difflib.get_close_matches(str(token).upper(), list(index),
+                                     n=limit, cutoff=0.6)
+    return [index[k] for k in near]
+
+
+def search_lots(text):
+    """Look up lots and return them grouped by product -> PI dispose.
+
+    Reads from the reconciliation the app has already computed (the same rows
+    shown under "RUPS reconciliation"), so a search costs nothing and always
+    agrees with what is on screen. Only lots that have never been reconciled
+    fall through to a small, targeted reconciliation of their own.
+    """
+    tokens = parse_lot_input(text)
+    if not tokens:
+        return {"ok": True, "products": [], "summary": [], "query": [],
+                "message": "Enter one or more lot numbers."}
+
+    wanted, unknown, expanded = resolve_lots(tokens)
+    if not wanted:
+        return {"ok": True, "products": [], "summary": [], "query": tokens,
+                "message": "No lots matched."}
+
+    rows, missing = cached_lot_rows(wanted)
+    reused = len(rows)
+
+    # Anything not reconciled yet: reconcile just those lots. That reuses the
+    # exact same code path as the main view and fills the index for next time.
+    if missing:
+        df = load_eims_df()
+        if df is not None and EIMS_LOT_COLUMN in df.columns:
+            lot_col = df[EIMS_LOT_COLUMN].astype(str).str.strip()
+            slice_df = df[lot_col.isin(missing)]
+            if len(slice_df):
+                reconcile(slice_df, scope="all")
+        found, still_missing = cached_lot_rows(missing)
+        rows.extend(found)
+        # Lots that exist nowhere - keep them visible so the user sees the gap.
+        for lot in still_missing:
+            rows.append({
+                "lot": lot, "product": "", "product_id": "",
+                "eims_qty": None, "rups_qty": 0, "last_used": None,
+                "operation": "", "op_conflict": False, "pi_dispose": "",
+                "status": "Not found",
+            })
+
+    # Preserve the order the user asked for.
+    order = {lot: i for i, lot in enumerate(wanted)}
+    rows.sort(key=lambda r: order.get(r["lot"], 10 ** 6))
+
+    summary = pd.DataFrame(rows)
+    products = group_by_product(summary)
+    not_found = [r["lot"] for r in rows if r["status"] == "Not found"]
+
+    # Hints for terms that matched nothing anywhere.
+    suggestions = {}
+    for tok in unknown:
+        row = next((r for r in rows if r["lot"] == tok), None)
+        if row and row["status"] == "Not found":
+            near = suggest_lots(tok)
+            if near:
+                suggestions[tok] = near
 
     return {
         "ok": True,
-        "lots": len(lots),
-        "records": len(df),
-        "status": status,
+        "query": tokens,
+        "expanded": expanded,
+        "suggestions": suggestions,
+        "lots": len(rows),
+        "reused": reused,
+        "fetched": len(rows) - reused,
         "not_found": not_found,
-        "metrics": {
-            "ppv_units": int((sspec != "").sum()),
-            "class_units": int((sspec == "").sum()),
-            "not_found": len(not_found),
-            "mismatch": n_mis,
-        },
+        "truncated": len(wanted) >= MAX_SEARCH_LOTS,
         "products": products,
         "summary": summary.to_dict("records"),
     }
-
-
 # ======================================================================= ATMf
 def submit_intms_ticket(signal_id, form_json, timeout=60):
     payload = {"signal": int(signal_id), "form_json": form_json}
@@ -746,6 +1054,17 @@ def submit_tickets(tickets):
             lots_html = "".join("<p>%s</p>" % l for l in t["lots"])
             rich = "<p>%s</p>%s" % (t.get("request", INTMS_REQUESTS[0]), lots_html)
             filled, _ = fill_intms_action(tid, 4, rich)
+            # Learn from a real submission: the product mapping that was used,
+            # and which lots are now spoken for.
+            remember_product_choice(t.get("product"), t["product_name"])
+            remember_submission(t["lots"], {
+                "ticket_id": tid,
+                "url": INTMS_TICKET_URL % tid,
+                "product_name": t["product_name"],
+                "test_area": t.get("test_area", "Class"),
+                "request": t.get("request", INTMS_REQUESTS[0]),
+                "at": time.strftime("%Y-%m-%d %H:%M"),
+            })
         results.append({
             "lots": t["lots"],
             "product_name": t["product_name"],

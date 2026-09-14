@@ -36,6 +36,23 @@
     </div>
   </div>
 
+  <!-- Lot search (works on any lot, independent of the filters) -->
+  <details class="card" id="searchCard">
+    <summary>🔎 Search by lot <span class="muted">— look up any lot, grouped and ready to submit</span></summary>
+    <div class="search-body">
+      <div class="search-bar">
+        <input id="lotQuery" class="lot-query" type="search" autocomplete="off"
+               placeholder="Paste lot numbers — commas, spaces or a whole Excel column. A prefix like ADLN expands to every match.">
+        <button id="btnLotSearch" class="btn btn-primary">Search</button>
+        <button id="btnLotClear" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="searchHint" class="search-hint muted"></div>
+      <div id="searchResults" class="hidden">
+        <div id="searchProducts"></div>
+      </div>
+    </div>
+  </details>
+
   <!-- Filters (other filters stay hidden here) -->
   <details class="card" id="filterCard" {% if not has_eims %}open{% endif %}>
     <summary>🔎 More filters</summary>
@@ -113,11 +130,14 @@
         </div>
       </details>
       <p class="muted">One ticket is created per Product + Test Area. Pick a Request for each row.</p>
+      <div id="atmfDupes" class="dupe-box hidden"></div>
+      <!-- Backs the type-to-search Product Name boxes; filled from /api/atmf/products -->
+      <datalist id="atmfProductList"></datalist>
       <div class="table-scroll">
         <table class="tbl" id="atmfPreview">
           <thead><tr>
-            <th>Request</th><th>Product</th><th>Product Name (ATMf)</th>
-            <th>Test Area</th><th>Lots</th><th class="num"># Lots</th>
+            <th class="no-tools">Request</th><th>Product</th><th class="no-tools">Product Name (ATMf)</th>
+            <th>Test Area</th><th class="no-tools">Lots</th><th class="num">#&nbsp;Lots</th>
           </tr></thead>
           <tbody></tbody>
         </table>

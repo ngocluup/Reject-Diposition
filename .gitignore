@@ -30,6 +30,9 @@ data/Lot_loss_operation*.bak
 data/samples/
 *_units.csv
 
+# Learned ATMf mappings + submitted-lot history (contains lot numbers)
+data/atmf_memory.json
+
 # Streamlit env skills (environment-specific symlinks)
 .agents/skills/developing-with-streamlit
 .claude/skills/developing-with-streamlit

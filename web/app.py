@@ -139,6 +139,18 @@ def api_reconcile():
     return sjson(result)
 
 
+@app.route("/api/lot/search", methods=["POST"])
+def api_lot_search():
+    body = request.get_json(force=True) or {}
+    query = body.get("query") or ""
+    try:
+        return sjson(core.search_lots(query))
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": "Lot search failed: %s" % e}), 500
+
+
 @app.route("/api/atmf/products")
 def api_atmf_products():
     return jsonify({"ok": True, "products": core.load_intms_products()})
@@ -152,6 +164,21 @@ def api_atmf_guess():
     for pg3 in body.get("prodgroups", []):
         out[pg3] = core.guess_atmf_product(pg3, prods)
     return jsonify({"ok": True, "map": out})
+
+
+@app.route("/api/atmf/submitted")
+def api_atmf_submitted():
+    """Lots that already went out on a ticket, so the UI can flag them."""
+    return sjson({"ok": True, "submitted": core.submitted_map()})
+
+
+@app.route("/api/atmf/forget", methods=["POST"])
+def api_atmf_forget():
+    """Clear the submitted marker for some lots (ticket cancelled / redo)."""
+    body = request.get_json(force=True) or {}
+    lots = body.get("lots") or []
+    removed = core.forget_submissions(lots)
+    return jsonify({"ok": True, "removed": removed})
 
 
 @app.route("/api/atmf/submit", methods=["POST"])

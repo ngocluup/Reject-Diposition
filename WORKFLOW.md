@@ -137,6 +137,7 @@ flowchart TD
 | `data/Lot_loss_operation.csv` | MARS via SPF | Comma | `LOT, CREATE_DATA1..4, INQTY` | 1.85 MB — 51,709 rows / **10,157 lots** |
 | `data/LOSE_OPERATION MAPPING.xlsx` | manual | Excel | `Operation` \| `Domain` \| `PI Dispose` | 10 entries |
 | `data/intms_products.json` | manual | JSON array | ATMf product names | **432 products** |
+| `data/atmf_memory.json` | written by the app | JSON | `product_map`, `submitted` | grows with use (git-ignored) |
 
 ---
 
@@ -318,13 +319,79 @@ Body: {"action_flow_json": {"id": "4", "rich_text": "<p>request</p><p>lot1</p><p
 |---|---|---|
 | ADLN | ADL N 0+8+1 | ✅ hard-coded map |
 | ARLS816B | ARL S 8+16+1 | ✅ prefix match |
-| TWL | WLW | ❌ **incorrect fuzzy match** — pick manually or add it to `INTMS_PRODUCT_MAP` |
+| TWL | WLW | ❌ fuzzy match is wrong — correct it once and the app remembers |
+
+The field is a **type-to-search box** backed by a `<datalist>` of all 432 products, so typing
+`8+16` or `ADL` narrows the list instantly. The border turns orange when empty and red when the
+text is not a real product; **Submit stays disabled until every row holds a valid name.**
+
+### Step C4 — It learns from what you submit
+A successful submission writes two things to `data/atmf_memory.json` (git-ignored, shared by the
+whole team since it lives on the server):
+
+| Key | Meaning |
+|---|---|
+| `product_map` | `Prodgroup3 → the ATMf Product Name that was actually used` |
+| `submitted` | `lot → {ticket_id, url, product_name, test_area, request, at}` |
+
+`guess_atmf_product()` consults `product_map` **first**, so correcting a bad guess once fixes it
+for everyone from then on. The file is written atomically (temp file + `os.replace`).
+
+### Step C5 — Duplicate protection
+| Layer | Behaviour |
+|---|---|
+| Lot table | A lot with a ticket is dimmed, gets a **green** left bar and a clickable `✓ <id>` in the **Ticket** column |
+| ATMf drawer | An orange panel lists the offenders with two escape hatches: *Remove them from this batch* / *They were cancelled — clear the flag* (`POST /api/atmf/forget`) |
+| Submit button | **Disabled** while any selected lot already has a ticket |
+| In-flight | `STATE.submitting` + disabled button + in-button spinner; the busy overlay is `z-index 200` so it covers the drawer (70/71) — closing the drawer mid-request is refused |
+
+> ⚠️ Ticket creation is **not idempotent**. The overlay used to sit at `z-index 50`, *below* the
+> drawer, which let a second click through and created a duplicate ticket.
 
 > **Always double-check the Product Name in the UI before submitting.**
 
 ---
 
-## 7. WORKFLOW D — Exporting a lot table
+## 7. WORKFLOW D — Search by lot
+
+Endpoint: `POST /api/lot/search` → `core.search_lots(text)`
+
+Looks up any lot regardless of the current filters, and renders with **exactly the same
+product → PI-dispose → lots component** as the reconciliation, so searched lots stay
+selectable and can be submitted to ATMf straight away.
+
+### Input handling
+| You type | What happens |
+|---|---|
+| `X618N647-!3` | exact match, case-insensitive |
+| `lot1, lot2  lot3` | commas / semicolons / spaces / tabs / newlines all split — an Excel column pastes straight in |
+| `ADLN` | no exact hit → treated as a **prefix**, expands to every matching lot (then substring as a last resort) |
+| `ADLN9XXX` | no match → `difflib` **"Did you mean"** suggestions, clickable |
+
+Capped at `MAX_SEARCH_LOTS = 200` per search.
+
+### It never re-queries RUPS for data it already has
+`_lot_rows` is a flat `lot → reconciled row` index that **every** reconciliation fills via
+`remember_lot_rows()`. A search:
+
+1. reads `cached_lot_rows(wanted)` — instant for anything already on screen;
+2. for the rest, slices the full EIMS frame to just those lots and calls `reconcile()` on it
+   (same code path, which also fills the index);
+3. gives lots that exist nowhere a synthetic `Not found` row.
+
+The response carries `reused` / `fetched` counters, shown in the UI hint line.
+The index is cleared by `clear_recon_cache()`, i.e. on the daily refresh.
+
+> ⚠️ `_reconcile_impl` returns early when RUPS has **no** records for a lot set. That branch
+> must still call `remember_lot_rows()` with EIMS-only rows — otherwise those lots are never
+> indexed and every repeat search re-runs the same empty RUPS query.
+
+**Measured on 2026-09-11:** lot in the prewarmed view **21 ms** · lot with no RUPS records
+1st 3230 ms → 2nd **29 ms** · prefix `ADLN` (15 lots) 1st 1108 ms → 2nd **25 ms**.
+
+---
+
+## 8. WORKFLOW E — Exporting a lot table
 
 Every PI-Dispose tab has an export bar underneath it. Exporting happens entirely in the
 browser, so there is no endpoint and no server round-trip.
@@ -344,7 +411,7 @@ browser, so there is no endpoint and no server round-trip.
 
 ---
 
-## 8. API reference
+## 9. API reference
 
 | Method | Endpoint | Input | Output |
 |---|---|---|---|
@@ -353,8 +420,11 @@ browser, so there is no endpoint and no server round-trip.
 | GET | `/api/options?view=default\|op4000` | – | `{options, preset, all_products}` |
 | POST | `/api/summary` | `{products[], filters{}}` | `{total_rows, products[], n_products}` |
 | POST | `/api/reconcile` | `{products[], filters{}, scope}` | `{lots, records, metrics{}, products[], summary[], not_found[]}` |
+| POST | `/api/lot/search` | `{query}` | `{products[], summary[], reused, fetched, expanded{}, suggestions{}, not_found[]}` |
 | GET | `/api/atmf/products` | – | `{products[]}` (432) |
 | POST | `/api/atmf/guess` | `{prodgroups[]}` | `{map{}}` |
+| GET | `/api/atmf/submitted` | – | `{submitted{lot: ticket info}}` |
+| POST | `/api/atmf/forget` | `{lots[]}` | `{removed}` |
 | POST | `/api/atmf/submit` | `{tickets[]}` | `{results[]}` |
 
 > Every response goes through `sjson()`, which converts NaN/Infinity to `null`
@@ -362,7 +432,7 @@ browser, so there is no endpoint and no server round-trip.
 
 ---
 
-## 9. Caching
+## 10. Caching
 
 | Cache | Key | TTL | Cleared by |
 |---|---|---|---|
@@ -370,12 +440,14 @@ browser, so there is no endpoint and no server round-trip.
 | `_recon_cache` | `(scope, lot tuple)` | until the next refresh | `clear_recon_cache()` |
 | `_eims_cache` | file mtime | automatic | mtime change |
 | `_map_cache` | name ("lose"/"inqty"/"products") | unbounded | `clear_caches()` |
+| `_lot_rows` | lot | until the daily refresh | `clear_recon_cache()` |
+| `_memory` | – | persistent on disk | never (survives restarts) |
 
 **Performance:** first run ~1.1s · cached ~0.02s.
 
 ---
 
-## 10. Standalone scripts (manual use, no web app needed)
+## 11. Standalone scripts (manual use, no web app needed)
 
 | Script | Run with | Input | Output |
 |---|---|---|---|
@@ -386,10 +458,13 @@ browser, so there is no endpoint and no server round-trip.
 
 ---
 
-## 11. Pitfalls & common errors
+## 12. Pitfalls & common errors
 
 | Symptom | Root cause | Fix |
 |---|---|---|
+| Duplicate ATMf ticket after a double click | The busy overlay was `z-index 50`, **below** the drawer (71), so the button stayed clickable | ✅ fixed — overlay at 200, `STATE.submitting` guard, disabled button |
+| Submit stays greyed out after picking a product | `allMapped` was computed once from the auto-guess and never re-evaluated | ✅ fixed — `validateAtmf()` re-checks the live input on every keystroke |
+| Search re-queried RUPS for lots already on screen | Search called `query_units()` itself | ✅ fixed — reads the `_lot_rows` index first |
 | `CREATE_DATA3` all blank | `dict(zip())` overwrite bug | ✅ fixed — keep first non-blank value |
 | INQTY doubled | MARS returns duplicate rows per node | ✅ fixed — `drop_duplicates()` |
 | `Lot_loss_operation.csv` only a few rows | SPF was killed mid-run | Re-run `refresh_loss_operation()` and let it finish |
@@ -405,7 +480,7 @@ browser, so there is no endpoint and no server round-trip.
 
 ---
 
-## 12. Environment
+## 13. Environment
 
 ```powershell
 # Interpreter (there is NO python/python3 on PATH)
@@ -426,7 +501,7 @@ conda install -n ngocluup -y -c conda-forge pandas requests openpyxl flask waitr
 
 ---
 
-## 13. Daily operations checklist
+## 14. Daily operations checklist
 
 1. Is the web app still running? → `Get-CimInstance Win32_Process -Filter "Name='python.exe'"`
 2. Did the 07:00 auto-refresh run? → check the console log: `[scheduler] EIMS auto-refreshed ...`
@@ -437,7 +512,7 @@ conda install -n ngocluup -y -c conda-forge pandas requests openpyxl flask waitr
 
 ---
 
-## 14. Remaining work (Phase 2)
+## 15. Remaining work (Phase 2)
 
 - Per-account permissions (only the owner sees the Refresh button).
 - Submit ATMf tickets under **each user's own account**, not the host machine's.
